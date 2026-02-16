@@ -65,13 +65,19 @@ document.getElementById('threadCount').textContent = navigator.hardwareConcurren
 // INLINED WORKER CODE (to fix file:// cross-origin issues)
 const workerCode = `
     let isRunning = false;
-    let batchSize = 10000;
+    let batchSize = 100000;
+    
+    // Fast Xorshift32 RNG
+    // Initial state must be non-zero
+    let state = 0xDEADBEEF; 
 
     self.onmessage = function (e) {
         const data = e.data;
         if (data.cmd === 'start') {
             isRunning = true;
             batchSize = data.batchSize;
+            if (data.seed) state = data.seed | 0; // Ensure 32-bit integer
+            if (state === 0) state = 0xDEADBEEF;
             loop();
         }
         else if (data.cmd === 'stop') {
@@ -85,24 +91,44 @@ const workerCode = `
     function loop() {
         if (!isRunning) return;
 
-        // Execute the batch
         let inside = 0;
         const total = batchSize;
+        
+        // Local vars for speed
+        let s = state;
+        
+        // Constants for float conversion: 2.3283064365386963e-10 = 1 / 2^32
+        // We want range [-1, 1]. 
+        // Val = (Uint32 * (1/2^32)) * 2 - 1
+        // Val = Uint32 * (2/2^32) - 1 = Uint32 * 4.6566128730773926e-10 - 1
+        const factor = 4.6566128730773926e-10;
 
         for (let i = 0; i < total; i++) {
-            const x = Math.random() * 2 - 1;
-            const y = Math.random() * 2 - 1;
+            // Xorshift32 Algorithm
+            s ^= s << 13;
+            s ^= s >>> 17;
+            s ^= s << 5;
+            let x = (s >>> 0) * factor - 1.0;
+            
+            s ^= s << 13;
+            s ^= s >>> 17;
+            s ^= s << 5;
+            let y = (s >>> 0) * factor - 1.0;
 
             if ((x * x + y * y) <= 1) {
                 inside++;
             }
         }
+        
+        // Update state back to global
+        state = s;
 
         self.postMessage({
             inside: inside,
             total: total
         });
 
+        // Use setTimeout(..., 0) to yield to event loop so we can receive 'stop' messages
         if (isRunning) {
             setTimeout(loop, 0);
         }
@@ -207,7 +233,8 @@ function loop(timestamp) {
         const pps = pointsThisSecond * (1000 / (timestamp - lastPpsCheck));
 
         ppsDisplay.textContent = new Intl.NumberFormat('de-DE').format(Math.floor(pps));
-        ppsDisplay.style.color = pps > 100000000 ? '#f472b6' : (pps > 1000000 ? '#34d399' : '#f8fafc');
+        // Thresholds: > 1 Billion (Pink), > 100 Million (Green)
+        ppsDisplay.style.color = pps > 1000000000 ? '#f472b6' : (pps > 100000000 ? '#34d399' : '#f8fafc');
 
         pointsThisSecond = 0;
         lastPpsCheck = timestamp;
@@ -261,7 +288,7 @@ function getHardwareInfo() {
             }
         }
     } catch (e) { console.error("GPU Detection error:", e); }
-    
+
     // Clean up GPU string (often verbose)
     // Remove "ANGLE (" and closing ")" if present
     if (gpuInfo.startsWith("ANGLE (")) {
@@ -298,10 +325,10 @@ function finishBenchmark() {
     resultAccuracy.textContent = `${accuracy.toFixed(5)}%`;
     resultPi.textContent = pi.toFixed(8);
     resultTime.textContent = `${totalTimeSec.toFixed(2)}s`;
-    
+
     // New stats
-    if(resultThreads) resultThreads.textContent = usedThreads;
-    if(resultHardware) resultHardware.textContent = getHardwareInfo();
+    if (resultThreads) resultThreads.textContent = usedThreads;
+    if (resultHardware) resultHardware.textContent = getHardwareInfo();
 
     // Show Modal
     resultsModal.classList.remove('hidden');
@@ -381,7 +408,9 @@ startBtn.addEventListener('click', () => {
         // Use Blob URL instead of external file
         const worker = new Worker(workerUrl);
         worker.onmessage = handleWorkerMessage;
-        worker.postMessage({ cmd: 'start', batchSize: batchSize });
+        // Seed must be non-zero and unique per worker
+        const randomSeed = (Date.now() & 0xFFFFFFFF) + (i * 999999) + Math.floor(Math.random() * 0xFFFFFF);
+        worker.postMessage({ cmd: 'start', batchSize: batchSize, seed: randomSeed });
         workers.push(worker);
     }
 
@@ -448,8 +477,8 @@ batchInput.addEventListener('input', (e) => {
     }
 
     let val = batchSize;
-    if (val >= 1000000) batchDisplay.textContent = (val / 1000000).toFixed(1) + 'M';
-    else if (val >= 1000) batchDisplay.textContent = (val / 1000).toFixed(0) + 'k';
+    if (val >= 1000000) batchDisplay.textContent = parseFloat((val / 1000000).toFixed(1)) + 'M';
+    else if (val >= 1000) batchDisplay.textContent = parseFloat((val / 1000).toFixed(0)) + 'k';
     else batchDisplay.textContent = val;
 });
 

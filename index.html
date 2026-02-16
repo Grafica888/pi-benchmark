@@ -16,7 +16,7 @@
     <div class="app-container">
         <header>
             <h1>Pi Benchmark <span class="version">v1.0</span></h1>
-            <p class="subtitle">Visueller Monte-Carlo-Algorithmus</p>
+            <p class="subtitle">Ultra-High Performance Monte-Carlo (Xorshift32 + Multi-Threaded)</p>
         </header>
 
         <main>
@@ -80,9 +80,9 @@
 
                 <div class="controls">
                     <div class="slider-group">
-                        <label for="batchSize">Batch Größe (Last)</label>
-                        <input type="range" id="batchSize" min="1000" max="500000" step="1000" value="10000">
-                        <span id="batchValue">10k</span>
+                        <label for="batchSize">Batch Größe (Last pro Tick)</label>
+                        <input type="range" id="batchSize" min="10000" max="10000000" step="10000" value="2000000">
+                        <span id="batchValue">2M</span>
                     </div>
 
                     <div class="slider-group">
@@ -137,7 +137,7 @@
                         <span class="label">Dauer in Sec</span>
                         <span class="val" id="resultTime">0s</span>
                     </div>
-                     <div class="result-item">
+                    <div class="result-item">
                         <span class="label">Threads</span>
                         <span class="val" id="resultThreads">0</span>
                     </div>
